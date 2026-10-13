@@ -90,10 +90,6 @@ spec:
             initialDelaySeconds: 30
             timeoutSeconds: 15
             periodSeconds: 60
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "rm -f /registration/eu.nova.csi.hyperv-reg.sock"]
           resources:
             requests:
               cpu: 10m
