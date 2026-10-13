@@ -1,0 +1,101 @@
+{{- if .Values.global.winmgmtframeworkwebapi.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-winmgmtframeworkwebapi
+  labels:
+    app: {{ .Release.Name }}-winmgmtframeworkwebapi
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-winmgmtframeworkwebapi
+      chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+      release: "{{ .Release.Name }}"
+      heritage: "{{ .Release.Service }}"
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-winmgmtframeworkwebapi
+        chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+        release: "{{ .Release.Name }}"
+        heritage: "{{ .Release.Service }}"
+    spec:
+      initContainers:
+        - name: ssh-init
+          image: busybox:latest
+          command: ['sh', '-c', 'cp /ssh-key/known_hosts /ssh-tmp/known_hosts']
+          volumeMounts:
+            - mountPath: "/ssh-key"
+              name: ssh-key-dir
+            - mountPath: "/ssh-tmp"
+              name: ssh-tmp-dir
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+{{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | indent 8 }}
+{{- end }}
+      containers:
+        - name: winmgmtframeworkwebapi
+          image: "{{ .Values.global.winmgmtframeworkwebapi.image.repository }}:{{ .Values.global.imageTag }}"
+          env:
+{{- if .Values.global.winmgmtframeworkwebapi.environment }}
+{{ toYaml .Values.global.winmgmtframeworkwebapi.environment | indent 12 }}
+{{- end }}
+          resources:
+            {{- toYaml .Values.global.winmgmtframeworkwebapi.resources | nindent 12 }}
+          ports:
+            - containerPort: 8080
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - mountPath: "/root/.ssh/id_ed25519"
+              subPath: "id_ed25519"
+              name: ssh-key-dir
+            - mountPath: "/root/.ssh/known_hosts"
+              subPath: "known_hosts"
+              name: ssh-tmp-dir
+{{- include "hypervcsi.licenseVolumeMount" . | nindent 12 }}
+      volumes:
+{{- include "hypervcsi.licenseVolume" . | nindent 8 }}
+        - name: ssh-key-dir
+          secret:
+            secretName: csi-hyperv-key
+            items:
+              - key: id_ed25519
+                path: id_ed25519
+                mode: 256
+              - key: known_hosts
+                path: known_hosts
+        - name: ssh-tmp-dir
+          emptyDir: {}
+{{- end }}

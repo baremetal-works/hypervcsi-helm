@@ -1,0 +1,179 @@
+{{- if .Values.global.hypervcsicontroller.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-hypervcsicontroller
+  labels:
+    app: {{ .Release.Name }}-hypervcsicontroller
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    # Only stable labels here: the selector is immutable, so the chart version must not be part of it.
+    matchLabels:
+      app: {{ .Release.Name }}-hypervcsicontroller
+      release: "{{ .Release.Name }}"
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-hypervcsicontroller
+        chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+        release: "{{ .Release.Name }}"
+        heritage: "{{ .Release.Service }}"
+    spec:
+      serviceAccountName: csi-hyperv-controller
+
+{{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml . | indent 8 }}
+{{- end }}
+      containers:
+        - name: hypervcsicontroller
+          image: "{{ .Values.global.hypervcsicontroller.image.repository }}:{{ .Values.global.imageTag }}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true  # TODO: Remove privileged mode later and test
+            capabilities:
+              add:
+                - SYS_ADMIN
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm -f /csi/csi.sock"]
+          env:
+{{- if .Values.global.hypervcsicontroller.environment }}
+{{ toYaml .Values.global.hypervcsicontroller.environment | indent 12 }}
+{{- end }}
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+            - mountPath: /var/lib/hyperv
+              name: hyperv-dir
+{{- include "hypervcsi.licenseVolumeMount" . | nindent 12 }}
+
+        - name: csi-provisioner
+          image: registry.k8s.io/sig-storage/csi-provisioner:v6.2.0
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--leader-election"
+            - "--timeout=60s"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 2m
+              memory: 20Mi
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
+        - name: csi-attacher
+          image: registry.k8s.io/sig-storage/csi-attacher:v4.12.0
+          args:
+            #  - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--leader-election"
+            - "--timeout=60s"
+          env:
+            - name: MY_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ADDRESS
+              value: /csi/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 2m
+              memory: 20Mi
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
+        - name: csi-resizer
+          image: "registry.k8s.io/sig-storage/csi-resizer:{{ dig "resizer" "image" "tag" "v1.13.2" .Values.global }}"
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--leader-election"
+            # Resize-VHD over PowerShell remoting + node-side growpart can be slow; match the other sidecars.
+            - "--timeout=120s"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 2m
+              memory: 20Mi
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
+{{- if .Values.global.healthMonitor.enabled }}
+        - name: csi-external-health-monitor-controller
+          image: "registry.k8s.io/sig-storage/csi-external-health-monitor-controller:{{ .Values.global.healthMonitor.image.tag | default "v0.13.0" }}"
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--leader-election={{ .Values.global.healthMonitor.leaderElection | default "true" }}"
+            - "--timeout={{ .Values.global.healthMonitor.timeout | default "60s" }}"
+            - "--http-endpoint={{ .Values.global.healthMonitor.httpEndpoint | default ":8080" }}"
+            - "--worker-threads={{ .Values.global.healthMonitor.workerThreads | default "10" }}"
+            - "--enable-node-watcher={{ .Values.global.healthMonitor.enableNodeWatcher | default "true" }}"
+            - "--node-list-add-interval={{ .Values.global.healthMonitor.nodeListAddInterval | default "5m" }}"
+            - "--v={{ .Values.global.healthMonitor.logLevel | default "2" }}"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          imagePullPolicy: "IfNotPresent"
+          resources:
+            limits:
+              memory: {{ .Values.global.healthMonitor.resources.limits.memory | default "512Mi" }}
+            requests:
+              cpu: {{ .Values.global.healthMonitor.resources.requests.cpu | default "10m" }}
+              memory: {{ .Values.global.healthMonitor.resources.requests.memory | default "20Mi" }}
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+          ports:
+            - containerPort: 8080
+              name: http-metrics
+              protocol: TCP
+{{- end }}
+
+      volumes:
+{{- include "hypervcsi.licenseVolume" . | nindent 8 }}
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: Directory
+        - name: plugin-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/eu.nova.csi.hyperv/
+            type: DirectoryOrCreate
+        - name: mountpoint-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: DirectoryOrCreate
+        - name: dev-dir
+          hostPath:
+            path: /dev
+            type: Directory
+        - name: hyperv-dir
+          hostPath:
+            path: /var/lib/hyperv
+            type: Directory
+        - name: socket-dir
+          emptyDir: {}
+{{- end }}

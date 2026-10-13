@@ -1,0 +1,20 @@
+{{- if .Values.global.winmgmtframeworkwebapi.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-winmgmtframeworkwebapi-service
+  labels:
+    app: {{ .Release.Name }}-winmgmtframeworkwebapi
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  selector:
+    app: {{ .Release.Name }}-winmgmtframeworkwebapi
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080 
+      name: winmgmtframeworkwebapi-http
+  type: ClusterIP  
+{{- end }}

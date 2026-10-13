@@ -1,0 +1,140 @@
+affinity: {}
+autoscaling:
+  enabled: false
+  maxReplicas: 3
+  minReplicas: 1
+  targetCPUUtilizationPercentage: 80
+global:
+  # Signed license file. Create the Secret first, e.g.
+  #   kubectl -n <namespace> create secret generic hypervcsi-license --from-file=license.lic=./license.lic
+  # It is mounted at /etc/hypervcsi/license/license.lic in the controller, the node driver and the WebApi.
+  # Licensing itself is switched on/off with the Licensing__Enabled environment variable of each component.
+  license:
+    existingSecret: ""
+    secretKey: license.lic
+  resizer:
+    image:
+      tag: "v1.13.2"
+  healthMonitor:
+    enabled: true
+    image:
+      tag: "v0.15.0"
+    leaderElection: true
+    timeout: "60s"
+    httpEndpoint: ":8080"
+    workerThreads: 10
+    enableNodeWatcher: true
+    nodeListAddInterval: "5m"
+    logLevel: 2
+    resources:
+      limits:
+        memory: "512Mi"
+      requests:
+        cpu: "10m"
+        memory: "20Mi"
+  hypervcsicontroller:
+    enabled: true
+    # Expose the CSI gRPC endpoint over a ClusterIP Service (debug only - it is unauthenticated).
+    # Also requires a Kestrel__EndPoints__Http__Url entry in environment.
+    exposeGrpcService: false
+    environment:
+      - name: ASPNETCORE_ENVIRONMENT
+        value: Development
+      - name: Kestrel__EndPoints__UnixSocket__Url
+        value: http://unix:/csi/csi.sock
+      - name: Kestrel__EndPoints__UnixSocket__Protocols
+        value: Http2
+      - name: CsiDriverOptions__SocketPath
+        value: /csi/novacsi.sock
+      - name: CsiDriverOptions__ApiUrl
+        value: http://winmgmtframeworkwebapi.example.com:8080
+      - name: Logging__LogLevel__Grpc
+        value: Debug
+      - name: Logging__LogLevel__Microsoft.AspNetCore.Mvc
+        value: None
+      - name: Logging__Microsoft.AspNetCore.Routing
+        value: None
+      - name: Logging__LogLevel__Default
+        value: Debug
+      - name: CsiDriverOptions__ApiToken
+        value: ""  # WebApi API key (header Authorization); set it at install time
+      # Grace period for an in-flight detach before DeleteVolume reports FailedPrecondition.
+      # external-provisioner deletes as soon as the PV is released, often while the VHDX is
+      # still attached; waiting here avoids a burst of VolumeFailedDelete events.
+      - name: CsiControllerOptions__DeleteVolume__DetachWaitAttempts
+        value: "3"
+      - name: CsiControllerOptions__DeleteVolume__DetachWaitSeconds
+        value: "5"
+      # Report-only reconciliation of VHDX files against PersistentVolumes. Never deletes.
+      - name: CsiControllerOptions__OrphanVolumeReport__Enabled
+        value: "true"
+      - name: CsiControllerOptions__OrphanVolumeReport__IntervalMinutes
+        value: "30"
+    image:
+      repository: ghcr.io/baremetal-works/novahypervcsi/csicontroller
+    resources:
+      limits:
+        memory: 300Mi
+      requests:
+        cpu: 100m
+        memory: 64Mi
+  hypervcsinodedriver:
+    enabled: true
+    # See hypervcsicontroller.exposeGrpcService.
+    exposeGrpcService: false
+    environment:
+      - name: ASPNETCORE_ENVIRONMENT
+        value: Development
+      - name: Kestrel__EndPoints__UnixSocket__Url
+        value: http://unix:/csi/csi.sock
+      - name: Kestrel__EndPoints__UnixSocket__Protocols
+        value: Http2
+      - name: CsiDriverOptions__SocketPath
+        value: /csi/csi.sock
+      - name: CsiDriverOptions__ApiUrl
+        value: http://winmgmtframeworkwebapi.example.com:8080
+      - name: Logging__LogLevel__Grpc
+        value: Debug
+      - name: Logging__LogLevel__Microsoft.AspNetCore.Mvc
+        value: None
+      - name: Logging__LogLevel__Grpc.AspNetCore.Server.ServerCallHandler
+        value: None
+      - name: Logging__Microsoft.AspNetCore.Routing
+        value: None
+      - name: Logging__LogLevel__Default
+        value: Debug
+      - name: CsiDriverOptions__ApiToken
+        value: ""  # WebApi API key (header Authorization); set it at install time
+    image:
+      repository: ghcr.io/baremetal-works/novahypervcsi/csinode
+    resources:
+      limits:
+        memory: 300Mi
+      requests:
+        cpu: 100m
+        memory: 64Mi
+  # The images in ghcr.io/baremetal-works are private: create a docker-registry Secret with a read:packages
+  # token you were given and list it here, e.g.
+  #   kubectl -n <namespace> create secret docker-registry ghcr-regcred --docker-server=ghcr.io \
+  #     --docker-username=<user> --docker-password=<token>
+  imagePullSecrets:
+    - name: ghcr-regcred
+  imageTag: v1.1.3
+  svcNamespace: nova-csi
+  tlsSecret: ""
+  winmgmtframeworkwebapi:
+    enabled: false
+nodeSelector:
+  kubernetes.io/os: linux
+podAnnotations: {}
+podSecurityContext: {}
+resources: {}
+secrets:
+  appsettingsJson: {}
+
+securityContext: {}
+serviceAccount:
+  annotations: {}
+  create: true
+  name: ""
+tolerations: []
