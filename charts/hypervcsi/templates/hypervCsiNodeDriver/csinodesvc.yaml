@@ -1,0 +1,21 @@
+{{- /* Unauthenticated CSI gRPC over TCP - only for debugging; kubelet uses the unix socket. */}}
+{{- if and .Values.global.hypervcsinodedriver.enabled .Values.global.hypervcsinodedriver.exposeGrpcService }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-hypervcsinodedriver-service
+  labels:
+    app: {{ .Release.Name }}-hypervcsinodedriver
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  selector:
+    app: {{ .Release.Name }}-hypervcsinodedriver
+  ports:
+    - protocol: TCP
+      port: 5216
+      targetPort: 5216
+      name: hypervcsinodedriver-http
+  type: ClusterIP  
+{{- end }}

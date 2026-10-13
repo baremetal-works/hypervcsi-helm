@@ -1,0 +1,29 @@
+{{- if and .Values.global.hypervcsicontroller.enabled (or .Values.global.hypervcsicontroller.exposeGrpcService .Values.global.healthMonitor.enabled) }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-hypervcsicontroller-service
+  labels:
+    app: {{ .Release.Name }}-hypervcsicontroller
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  selector:
+    app: {{ .Release.Name }}-hypervcsicontroller
+  ports:
+{{- /* Unauthenticated CSI gRPC over TCP - only for debugging; the sidecars use the unix socket. */}}
+{{- if .Values.global.hypervcsicontroller.exposeGrpcService }}
+    - protocol: TCP
+      port: 5216
+      targetPort: 5216
+      name: hypervcsicontroller-http
+{{- end }}
+{{- if .Values.global.healthMonitor.enabled }}
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+      name: health-metrics
+{{- end }}
+  type: ClusterIP  
+{{- end }}

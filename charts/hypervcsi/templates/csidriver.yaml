@@ -1,0 +1,21 @@
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  # Must match GetPluginInfo name in HypervCsiController/HypervCsiNodeDriver CsiIdentity
+  name: eu.nova.csi.hyperv
+  labels:
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+spec:
+  # VHDX must be attached to the VM via ControllerPublishVolume before the node can stage it.
+  attachRequired: true
+  podInfoOnMount: false
+  # Each PVC is its own ext4/xfs on a dedicated VHDX, so kubelet may always apply the pod's fsGroup.
+  # The default (ReadWriteOnceWithFSType) silently skips it when the PV has no fsType.
+  fsGroupPolicy: File
+  volumeLifecycleModes:
+    - Persistent
+  requiresRepublish: false
+  # GET_CAPACITY is not implemented.
+  storageCapacity: false
