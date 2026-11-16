@@ -47,9 +47,22 @@ Values to set (see `charts/hypervcsi/values.yaml`):
 | `CsiDriverOptions__ApiToken` (controller and node `environment`) | API key of the WebApi |
 | `global.license.existingSecret` | Secret holding the signed license file (`license.lic`) |
 
-## License
+## Chart license and product EULA
 
-The driver needs a license file for production use. Create the Secret and point the chart at it:
+The Helm chart source code in this repository (templates, metadata, and default values) is licensed
+under the Apache License 2.0; see [LICENSE](LICENSE). The chart package includes the same license as
+`charts/hypervcsi/LICENSE`. This repository currently contains no vendored chart dependencies or
+third-party source files.
+
+The Apache license applies only to the chart source. It does not grant rights to the Billet CSI/MCP
+software, container images, or binaries deployed by the chart. Those remain proprietary commercial
+products and are subject to the applicable commercial terms and Billet EULA. The canonical EULA is
+being prepared in the HypervCsi repository and is not published here yet.
+
+## Product license file
+
+Production use of the product requires a signed license file, separate from the chart's Apache
+license. Create the Secret and point the chart at it:
 
 ```bash
 kubectl -n csi-hyperv create secret generic hypervcsi-license --from-file=license.lic=./license.lic
